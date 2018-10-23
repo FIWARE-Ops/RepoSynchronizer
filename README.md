@@ -2,6 +2,7 @@
 
 # GitHub Repository Synchronizer
 [![Docker badge](https://img.shields.io/docker/pulls/fiware/service.reposynchronizer.svg)](https://hub.docker.com/r/fiware/service.reposynchronizer/)
+[![Build Status](https://travis-ci.org/FIWARE-Ops/RepoSynchronizer.svg?branch=master)](https://travis-ci.org/FIWARE-Ops/RepoSynchronizer)
 
 ## Overview
 This project is part of [FIWARE](https://fiware.org) OPS infrastructure.
