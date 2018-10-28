@@ -26,10 +26,10 @@ $ curl http://localhost:8000/ping
 ```
 
 ## How to configure
-+ You should provide a valid token for GitHub with an environment variable TOKEN_GITHUB.
-+ TOKEN is used to protect the API endpoint "/config", if not specified, the endpoint will be inaccessible.
-+ You can mount workspace from host (add option -v to docker run command, target path should be the same, as in config) to preserve it's state.
-+ Sample config is located [here](./config-example.json).
+Sample config is located [here](./config-example.json).
+You should provide a valid token for GitHub with an environment variable TOKEN_GITHUB.
+TOKEN is used to protect the API endpoint "/config", if not specified, the endpoint will be inaccessible.
+You can mount workspace from host (add option `-v` to `docker run` command, target path should be the same, as in config) to preserve it's state.
 
 ## How to use
 Ping
@@ -46,7 +46,7 @@ $ curl http://localhost:8000/config?token=${TOKEN}
 ```
 Sync
 ```console
-$ curl -X POST http://localhost:8000/sync?repo=${TARGET_OR_SOURCE_REPO_DEFINED_IN_CONFIG}
+$ curl -X POST http://localhost:8000/sync?repo=${SOURCE_REPO}
 ```
 ## GitHub integration
 This project works as an endpoint and it should receive notifications from GitHub, so you should configure the webhook in the GitHub repository:

@@ -14,50 +14,32 @@ import datetime
 import argparse
 
 
-def check_repo_in_config(repo_param):
-    for repo in config['repositories']:
-        if repo['source'] == repo_param:
-            return 'source'
-        if repo['target'] == repo_param:
-            return 'target'
-
-    return False
+def get_hash(repo_param):
+    return hash(repo_param) % ((sys.maxsize + 1) * 2)
 
 
-def get_repo_pair_in_config(repo_param):
-    for repo in config['repositories']:
-        if repo['source'] == repo_param:
-            return repo['target']
-        if repo['target'] == repo_param:
-            return repo['source']
-
-    return False
-
-
-def sync(repo_param):
-    events[repo_param].acquire()
+def sync(repo_hash):
+    events[repo_hash].acquire()
     with open(os.devnull, 'w') as f:
-        path = os.path.join(config['workspace'], repo_param.split('/')[1])
-        src_url = 'https://github.com/' + repo_param
-        dst_url = 'https://' + user + ':' + token_github + '@github.com/' + get_repo_pair_in_config(repo_param)
+        path = os.path.join(workspace + '/', str(repo_hash))
+        src_url = 'https://github.com/' + config[repo_hash]['source']
+        dst_url = 'https://' + user + ':' + token_github + '@github.com/' + config[repo_hash]['target']
         if not os.path.isdir(path):
             os.makedirs(path)
             subprocess.call(['git', 'clone', '--mirror', src_url, path], stdout=f, stderr=f)
             subprocess.call(['git', 'remote', 'set-url', '--push', 'origin', dst_url], cwd=path, stdout=f, stderr=f)
         subprocess.call(['git', 'fetch', '-p', '-m', 'origin'], cwd=path, stdout=f, stderr=f)
         subprocess.call(['git', 'push', '--mirror'], cwd=path, stdout=f, stderr=f)
+
+    events[repo_hash].release()
+
     if validate_sync():
-        message = {'message': 'Sync succeeded'}
-        code = 200
+        return True
     else:
-        message = {'message': 'Sync failed'}
-        code = 500
-
-    events[repo_param].release()
-    return message, code
+        return False
 
 
-def release(repo, body):
+def release(repo_hash, body):
     data = dict()
     data['tag_name'] = body['release']['tag_name']
     data['name'] = body['release']['name']
@@ -67,7 +49,7 @@ def release(repo, body):
 
     data_json = jsn.dumps(data)
 
-    url = 'https://api.github.com/repos/' + repo + '/releases?access_token=' + token_github
+    url = 'https://api.github.com/repos/' + config[repo_hash]['target'] + '/releases?access_token=' + token_github
 
     response = requests.post(url, data=data_json, headers={'Content-Type': 'application/json'})
 
@@ -77,8 +59,9 @@ def release(repo, body):
         return False
 
 
-def target_create(target):
+def target_create(repo_hash):
     message = dict()
+    target = config[repo_hash]['target']
     response = requests.get('https://api.github.com/repos/' + target + '?access_token=' + token_github)
     if response.status_code == 404:
         data_func = dict()
@@ -92,13 +75,10 @@ def target_create(target):
         else:
             message['message'] = 'Target repository has not been created'
             message['code'] = 500
-    else:
-        message['message'] = 'Target repository already created'
-        message['code'] = 200
 
-    message['cmd'] = 'target_create'
-    message['repo'] = target
-    print(jsn.dumps(message, indent=2))
+        message['cmd'] = 'target_create'
+        message['repo'] = target
+        print(jsn.dumps(message, indent=2))
 
 
 def validate_sync():
@@ -112,9 +92,9 @@ def parse_request_line(request_line):
     param = dict()
     if cmd in ['sync', 'change', 'config']:
         if len(request_line.split('?')) > 1:
-            for element in request_line.split('?')[1].split('&'):
-                if element.split('=')[0] in ['repo', 'obj', 'token']:
-                    param[element.split('=')[0]] = element.split('=')[1]
+            for el in request_line.split('?')[1].split('&'):
+                if el.split('=')[0] in ['repo', 'obj', 'token']:
+                    param[el.split('=')[0]] = el.split('=')[1]
 
     if method == 'GET' and cmd in cmd_get_rl:
         return cmd, param
@@ -126,7 +106,7 @@ def parse_request_line(request_line):
 
 class Handler(http.server.BaseHTTPRequestHandler):
 
-    def reply(self, message=dict(), silent=False, code=200, cmd='', repo=''):
+    def reply(self, message=None, silent=False, code=200, cmd=None, repo=None):
         self.send_response(code)
         self.send_header('content-type', 'application/json')
         self.end_headers()
@@ -159,6 +139,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
         cmd, param = parse_request_line(self.requestline)
         hook = False
+        status = False
+        repo = None
+        body = None
 
         if cmd == 'hook':
             hook = True
@@ -198,28 +181,21 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self.reply(message, code=400, cmd=cmd)
                 return
 
-        status = True
         if cmd in cmd_post_rl:
             if 'repo' in param:
                 repo = param['repo']
-            else:
-                status = False
         elif 'repository' in body:
             if 'full_name' in body['repository']:
                 repo = body['repository']['full_name']
-            else:
-                status = False
-        else:
-            status = False
 
-        if not status:
+        if not repo:
             message = {'message': 'Bad request'}
             self.reply(message, code=400, cmd=cmd)
             return
 
-        check = check_repo_in_config(repo)
+        repo_hash = get_hash(repo)
 
-        if not check:
+        if repo_hash not in config:
             message = {'message': 'Repo not found'}
             self.reply(message, code=404, cmd=cmd, repo=repo)
             return
@@ -229,44 +205,26 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.reply(message, cmd=cmd, repo=repo)
             return
 
-        if check == 'source':
-            if cmd == 'release':
-                status = False
-                if 'action' in body:
-                    if body['action'] == 'published':
-                        status = release(get_repo_pair_in_config(repo), body)
+        if cmd == 'release':
+            if 'action' in body:
+                if body['action'] == 'published':
+                    status = release(repo_hash, body)
+        else:
+            status = sync(repo_hash)
 
-                if not status:
-                    message = {'message': 'Sync failed'}
-                    code = 500
-                else:
-                    message = {'message': 'Sync succeeded'}
-                    code = 200
-            else:
-                message, code = sync(repo)
+        if status:
+            code = 200
+            message = {'message': 'Sync succeeded'}
+        else:
+            code = 500
+            message = {'message': 'Sync failed'}
 
-            if hook:
-                if code == 200:
-                    message = {'message': 'Synced. Please, change the webhook config as described here: https://github.com/Fiware/developmentGuidelines/blob/master/repo_webhook.mediawiki'}
-                else:
-                    message = {'message': 'Sync Failed. Please, change the webhook config as described here: https://github.com/Fiware/developmentGuidelines/blob/master/repo_webhook.mediawiki'}
-                code = 500
+        if hook:
+            message['warning'] = 'Please, change the webhook config as described here: \
+https://github.com/Fiware/developmentGuidelines/blob/master/repo_webhook.mediawiki'
+            code = 500
 
-            self.reply(message, code=code, cmd=cmd, repo=repo)
-            return
-
-        if check == 'target':
-            if cmd == 'sync':
-                message, code = sync(get_repo_pair_in_config(repo))
-                self.reply(message, code=code, cmd=cmd, repo=repo)
-                return
-            else:
-                message = {'message': 'Target repo, ignored'}
-                self.reply(message, cmd=cmd, repo=repo)
-                return
-
-        message = {'message': 'Hook not found'}
-        self.reply(message, code=404, cmd=cmd, repo=repo)
+        self.reply(message, code=code, cmd=cmd, repo=repo)
         return
 
     def do_GET(self):
@@ -302,10 +260,6 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self.reply(message, code=401, cmd=cmd)
             return
 
-        if cmd == 'hook':
-            message = {'message': 'Please, change the webhook config as described here: https://github.com/Fiware/developmentGuidelines/blob/master/repo_webhook.mediawiki'}
-            self.reply(message, cmd=cmd, code=500)
-            return
 
 class Thread(threading.Thread):
     def __init__(self, i):
@@ -344,6 +298,7 @@ if __name__ == '__main__':
     threads = args.threads
     socks = args.socks
     config_path = args.config_path
+    version_path = os.path.split(os.path.abspath(__file__))[0] + '/version'
 
     if 'TOKEN_GITHUB' in os.environ:
         token_github = os.environ['TOKEN_GITHUB']
@@ -362,38 +317,60 @@ if __name__ == '__main__':
         print(jsn.dumps({'message': 'Config file not found', 'code': 500, 'cmd': 'start'}, indent=2))
         config_file = None
         sys.exit(1)
-
     try:
-        with open(config_path) as f:
-            config = jsn.load(f)
+        with open(config_path) as file:
+            temp = jsn.load(file)
     except ValueError:
         print(jsn.dumps({'message': 'Unsupported config type', 'code': 500, 'cmd': 'start'}, indent=2))
         sys.exit(1)
 
-    print(jsn.dumps({'message': 'Checking config and repos', 'code': 200, 'cmd': 'start'}, indent=2))
-
-    if 'repositories' not in config:
-        print(jsn.dumps({'message': 'Entity repositories not found in config', 'code': 500, 'cmd': 'start'}, indent=2))
+    version = dict()
+    if not os.path.isfile(version_path):
+        print(jsn.dumps({'message': 'Version file not found', 'code': 500, 'cmd': 'start'}, indent=2))
+        version_file = None
         sys.exit(1)
-    elif len(config['repositories']) == 0:
+    try:
+        with open(version_path) as file:
+            version_file = file.read().split('\n')
+            version['build'] = version_file[0]
+            version['commit'] = version_file[1]
+    except IndexError:
+        print(jsn.dumps({'message': 'Unsupported version file type', 'code': 500, 'cmd': 'start'}, indent=2))
+        sys.exit(1)
+
+    print(jsn.dumps({'message': 'Checking config', 'code': 200, 'cmd': 'start'}, indent=2))
+
+    config = dict()
+    try:
+        for element in temp['repositories']:
+            repository_hash = get_hash(element['source'])
+            config[repository_hash] = dict()
+            config[repository_hash]['source'] = element['source']
+            config[repository_hash]['target'] = element['target']
+
+    except KeyError:
+        print(jsn.dumps({'message': 'Config is not correct', 'code': 500, 'cmd': 'start'}, indent=2))
+        sys.exit(1)
+
+    if len(config) == 0:
         print(jsn.dumps({'message': 'Repositories list is empty', 'code': 500, 'cmd': 'start'}, indent=2))
         sys.exit(1)
-    elif 'workspace' not in config:
+
+    if 'workspace' not in temp:
         print(jsn.dumps({'message': 'Workspace not defined, use defaults', 'code': 404, 'cmd': 'start'}, indent=2))
-        config['workspace'] = '/tmp/reposynchronizer'
-    elif not os.path.isdir(config['workspace']):
+        workspace = '/tmp/reposynchronizer'
+    else:
+        workspace = temp['workspace']
+
+    if not os.path.isdir(workspace):
         print(jsn.dumps({'message': 'Workspace not exists', 'code': 500, 'cmd': 'start'}, indent=2))
         sys.exit(1)
 
-    for el in config['repositories']:
-        if 'source' in el and 'target' in el:
-            target_create(el['target'])
-        else:
-            print(jsn.dumps({'message': 'Error found in config', 'code': 500, 'cmd': 'start'}, indent=2))
-            sys.exit(1)
+    for element in config:
+        target_create(element)
 
     if threads == 0:
-        threads = len(config['repositories'])//2 + 3
+        threads = len(config)//2 + 3
     if socks == 0:
         socks = threads
 
@@ -410,14 +387,9 @@ if __name__ == '__main__':
                            'repository_vulnerability_alert', 'team']
     cmd_post = cmd_post_rl + cmd_post_hr + cmd_post_hr_ignored
 
-    version_file = open(os.path.split(os.path.abspath(__file__))[0] + '/version').read().split('\n')
-    version = dict()
-    version['build'] = version_file[0]
-    version['commit'] = version_file[1]
-
     events = dict()
-    for el in config['repositories']:
-        events[el['source']] = threading.BoundedSemaphore(1)
+    for element in config:
+        events[element] = threading.BoundedSemaphore(1)
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)

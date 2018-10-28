@@ -1,5 +1,5 @@
 {
-    "workspace": "/tmp/reposynchronizer/",
+    "workspace": "/tmp/reposynchronizer",
     "repositories": [
 	    {
 	        "source": "none/test-source",
