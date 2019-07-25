@@ -6,11 +6,13 @@ WORKDIR /opt/
 COPY . /opt/
 
 RUN apk update && \
-    apk add --no-cache git build-base libffi-dev openssl-dev && \
+    apk add --no-cache git build-base openssl-dev && \
     pip install -r requirements.txt && \
-    apk del build-base libffi-dev openssl-dev && \
+    apk del build-base openssl-dev && \
     rm -Rf /var/cache/apk/*
 
 USER nobody
+
+EXPOSE 8080
 
 ENTRYPOINT ["/usr/bin/env", "python3", "-u", "/opt/run.py"]
