@@ -20,10 +20,11 @@ description = None
 user = None
 
 event_ignored = ['check_run', 'check_suite', 'commit_comment', 'deployment', 'deployment_status', 'status', 'issues',
-                 'installation', 'installation_repositories', 'issue_comment', 'repository_vulnerability_alert',
+                 'installation', 'installation_repositories', 'issue_comment', 'repository_vulnerability_alert', 'star',
                  'marketplace_purchase', 'member', 'membership', 'milestone', 'organization', 'org_block', 'gollum',
                  'page_build', 'project_card', 'project_column', 'project', 'public', 'pull_request', 'fork', 'team',
-                 'pull_request_review_comment', 'pull_request_review', 'repository', 'watch', 'team_add',  'label']
+                 'pull_request_review_comment', 'pull_request_review', 'repository', 'watch', 'team_add',  'label',
+                 'deploy_key']
 
 event_accepted = ['push', 'create', 'delete', 'release']
 
@@ -219,7 +220,6 @@ if __name__ == '__main__':
         for element in temp['repositories']:
             config[element['source']] = dict()
             config[element['source']]['target'] = element['target']
-            config[element['source']]['lock'] = asyncio.Lock()
     except KeyError:
         error('Config is not correct')
         exit(1)
@@ -248,6 +248,9 @@ if __name__ == '__main__':
         exit(1)
 
     asyncio.set_event_loop_policy(EventLoopPolicy())
+
+    for element in config:
+        config[element]['lock'] = asyncio.Lock()
 
     app = web.Application()
     app.add_routes(routes)
