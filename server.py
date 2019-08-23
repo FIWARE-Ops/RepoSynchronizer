@@ -217,16 +217,16 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.reply(message, code=400, cmd=cmd)
             return
 
-        if cmd in cmd_post_hr_ignored:
-            message = {'message': 'Request in ignored list'}
-            self.reply(message, cmd=cmd, repo=repo)
-            return
-
         check = check_repo_in_config(repo)
 
         if not check:
             message = {'message': 'Repo not found'}
             self.reply(message, code=404, cmd=cmd, repo=repo)
+            return
+
+        if cmd in cmd_post_hr_ignored:
+            message = {'message': 'Request in ignored list'}
+            self.reply(message, cmd=cmd, repo=repo)
             return
 
         if check == 'source':
