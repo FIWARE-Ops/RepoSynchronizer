@@ -1,0 +1,17 @@
+if: branch = master and not type IN (pull_request)
+dist: trusty
+sudo: false
+language: minimal
+before_install: true
+install: true
+before_script: true
+script:
+- echo ${DOCKER_PASSWORD} | docker login -u ${DOCKER_USERNAME} --password-stdin
+- echo ${TRAVIS_BUILD_NUMBER} > version
+- echo ${TRAVIS_COMMIT} >> version
+- docker build  --no-cache -t fiware/service.reposynchronizer .
+- docker push fiware/service.reposynchronizer
+env:
+  global:
+  - secure: NcMh32WfpyL6krGrD8hkoFIv90ttNscYWMui11t/d/J/k4nw0mfpejewmmBrdbksCMHEqqNgaeaMwkJwYj5gfVdEWczT/3c+Ym9rVP9RVCHqfbTOxnAjid7cZwrvV1RxjHwZrsS1K1v++Ks6dqDuJcOVeLufAj6n85Jcucc288X1fpiw0g2D4sybJLTIauknv/j6pkIZWUnTxNPdz/beSCbX0qoWXiJaY4fhcEF6HBOlHjDP/ouNSwGzADqcsXuhNIIRqD3++L4rjkGk7qXtfsspXj/4jlArr30ldEtMvCnFQ1XjiOzpPLQogNZa6ToGqKZ4qSi9BkY4qc//zprTXOu7Za9jWXeBhZ+Q+b6uBHRCi88Wh/q0vY7FUbY6+67EB7IyLDAiUS22RQerPUmlf3TeM3NFDKCRaswjmAolw+H4wNh+g3lMt0uPAC46ne8hFVyiKDOSFWzptpr4vtmf9e7n4hMMrqklZrgoUyz0Ki2p7NOUHjGdxeRWUDzKWLNXs3p7sJEPwanXrQ/oRT2w/FwdErKsJYtSAiAa5zT2QzJDjsqAF1fhGbJaAVLRyONG8w/a4mY5EiOQWIXGx0L67xtNiqRqQRJdrV16XUV2EO2gZ76Jn83tK5angT/mmONy/qK8BBrVH/qXo+/c7r6Ea0Zi40yDSN+g6WKwEtB7t0w=
+  - secure: dPgDxZjoVjLEivmSSxyq6xx4WC3rXPpJuxxRSrYDkk/Faq5RKYbVNaINCsXNPxb3GaMXq6fWqUIVaJVub2ua6aXrbPDSxrck4x4NTy+zji9HkM8Z3KwhRKr/RWfLYr5mpNphve1KNor4slElU4OQbOCvY9TWSqOugkn4yq+TeewtIhv1LoSOSbeVjy5vkDB5QevOdbIoX9T5bA5Gkmpbi9Cjsi3VosgKrkII8MH21FT0RT+bCWDrFWN1sHW/tWA6wn7WNYo/uNr29JQMopYGmhfVzDFkOI+CxClEqpbdgEg8xf6kVfXC55bdB4+BaQOtS31itKri8ykOAyazOBdfv39rfmsXQTTG7r2ZOCD661/4ifODqf+jalpj3oIzG9nZ9UoySexXSWkglsW1CciEkuRWyp5KJAzOHzU+XIItnXuaXPrf003zeVl56yph2ZCsHnNarz7lV39JU/fadoaLWOlB7ftDHvByPeB0hjydfjls81pEFt6Ahw2gD1qKp/xWTFPRfxPpHjyjHOKer4uRWnTIvt92U/HPxBw0/ZRNh+ezdTnZFT6TfKJ/+5fRJVQ9MYl4pOHshr2/hm6V6JWRohwBC3KVPsbr3QAzuvEStQf7hNMolX2jn4YpYnWzcmHJiawe1umHUPew0EvIo+uwiIQSKlxjvcYKK/rJrv8OoVo=

@@ -1,0 +1,9 @@
+{
+    "workspace": "/tmp/reposynchronizer/",
+    "repositories": [
+	    {
+	        "source": "none/test-source",
+	        "target": "none/test-target"
+        }
+    ]
+}
