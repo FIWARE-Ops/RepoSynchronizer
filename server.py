@@ -154,11 +154,16 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     def do_POST(self):
         # temp:
-        print("debug: ", self.requestline)
-        print("debug: ", self.headers.get('X-GitHub-Event'))
+        print("debug: rq=", self.requestline)
+        print("debug: gh=", self.headers.get('X-GitHub-Event'))
 
         cmd, param = parse_request_line(self.requestline)
-        if not cmd:
+        hook = False
+
+        if cmd == 'hook':
+            hook = True
+
+        if not cmd or hook:
             cmd = self.headers.get('X-GitHub-Event')
 
         if not cmd:
@@ -181,7 +186,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.reply(message, cmd=cmd)
             return
 
-        if cmd not in cmd_post_rl or cmd == 'hook':
+        if cmd not in cmd_post_rl:
             content_length = int(self.headers.get('content-length'))
 
             if content_length == 0:
@@ -199,7 +204,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return
 
         status = True
-        if cmd in cmd_post_rl and cmd != 'hook':
+        if cmd in cmd_post_rl:
             if 'repo' in param:
                 repo = param['repo']
             else:
@@ -240,8 +245,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
             else:
                 message, code = sync(repo)
 
-            if cmd == 'hook':
-                message = {'message': 'Please, change the webhook config as described here: https://github.com/Fiware/developmentGuidelines/blob/master/repo_webhook.mediawiki'}
+            if hook:
+                if code == 200:
+                    message = {'message': 'Synced. Please, change the webhook config as described here: https://github.com/Fiware/developmentGuidelines/blob/master/repo_webhook.mediawiki'}
+                else:
+                    message = {'message': 'Sync Failed. Please, change the webhook config as described here: https://github.com/Fiware/developmentGuidelines/blob/master/repo_webhook.mediawiki'}
                 code = 500
 
             self.reply(message, code=code, cmd=cmd, repo=repo)
