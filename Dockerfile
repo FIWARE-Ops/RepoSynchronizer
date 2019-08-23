@@ -1,15 +1,16 @@
-FROM alpine
-MAINTAINER Dmitrii Demin <mail@demin.co>
+FROM python:3.7.3-alpine3.10
+LABEL maintainer="Dmitrii Demin <mail@demin.co>"
 
-ADD server.py /opt/
-ADD version /opt/
+WORKDIR /opt/
 
-RUN apk add --no-cache --update python3 git \
-&&  pip3 install requests \
-&&  mkdir -p /tmp/reposynchronizer
+COPY . /opt/
 
-WORKDIR /opt
+RUN apk update && \
+    apk add --no-cache git build-base libffi-dev openssl-dev && \
+    pip install -r requirements.txt && \
+    apk del build-base libffi-dev openssl-dev && \
+    rm -Rf /var/cache/apk/*
 
-CMD ["/usr/bin/python3", "-u", "/opt/server.py"]
+USER nobody
 
-EXPOSE 8000
+ENTRYPOINT ["/usr/bin/env", "python3", "-u", "/opt/run.py"]
