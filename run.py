@@ -19,13 +19,13 @@ workspace = None
 description = None
 user = None
 
-cmd_ignored = ['check_run', 'check_suite', 'commit_comment', 'deployment', 'deployment_status', 'status', 'issues',
-               'installation', 'installation_repositories', 'issue_comment', 'repository_vulnerability_alert', 'label',
-               'marketplace_purchase', 'member', 'membership', 'milestone', 'organization', 'org_block', 'gollum',
-               'page_build', 'project_card', 'project_column', 'project', 'public', 'pull_request', 'fork', 'team',
-               'pull_request_review_comment', 'pull_request_review', 'repository', 'watch', 'team_add']
+event_ignored = ['check_run', 'check_suite', 'commit_comment', 'deployment', 'deployment_status', 'status', 'issues',
+                 'installation', 'installation_repositories', 'issue_comment', 'repository_vulnerability_alert',
+                 'marketplace_purchase', 'member', 'membership', 'milestone', 'organization', 'org_block', 'gollum',
+                 'page_build', 'project_card', 'project_column', 'project', 'public', 'pull_request', 'fork', 'team',
+                 'pull_request_review_comment', 'pull_request_review', 'repository', 'watch', 'team_add',  'label']
 
-cmd_accepted = ['push', 'create', 'delete', 'release']
+event_accepted = ['push', 'create', 'delete', 'release']
 
 
 @routes.get('/ping')
@@ -48,10 +48,10 @@ async def post_handler(request):
     if event == 'ping':
         return web.Response(text='pong\n')
 
-    if event in cmd_ignored:
+    if event in event_ignored:
         return web.Response(text='event in the ignored list\n')
 
-    if event not in cmd_accepted:
+    if event not in event_accepted:
         error('Unknown event, %s', event)
         return web.Response(text="Unknown event" + event + '\n', status=400)
 
@@ -76,20 +76,17 @@ async def post_handler(request):
         trg_path = path.join(workspace + '/', repository)
         src_url = 'https://github.com/' + repository
         dst_url = 'https://' + user + ':' + token + '@github.com/' + config[repository]['target']
+        cmd_list = list()
         if not path.isdir(trg_path):
             makedirs(trg_path)
-            command = 'git clone --mirror ' + src_url + ' ' + trg_path
-            process = await asyncio.create_subprocess_shell(command, stdout=asyncio.subprocess.PIPE)
-            stdout = await process.communicate()
-            command = 'cd ' + trg_path + ' && git remote set-url --push origin ' + dst_url
-            process = await asyncio.create_subprocess_shell(command, stdout=asyncio.subprocess.PIPE)
-            stdout = await process.communicate()
-        command = 'cd ' + trg_path + ' && git fetch -p -m origin'
-        process = await asyncio.create_subprocess_shell(command, stdout=asyncio.subprocess.PIPE)
-        stdout = await process.communicate()
-        command = 'cd ' + trg_path + ' && git push --mirror'
-        process = await asyncio.create_subprocess_shell(command, stdout=asyncio.subprocess.PIPE)
-        stdout = await process.communicate()
+            cmd_list.append('git clone --mirror ' + src_url + ' ' + trg_path)
+            cmd_list.append('git -C ' + trg_path + ' remote set-url --push origin ' + dst_url)
+        cmd_list.append('git -C ' + trg_path + ' fetch -p -m origin')
+        cmd_list.append('git -C ' + trg_path + ' push --mirror')
+        for cmd in cmd_list:
+            process = await asyncio.create_subprocess_shell(cmd, stdout=asyncio.subprocess.PIPE,
+                                                            stderr=asyncio.subprocess.PIPE)
+            await process.communicate()
         return web.HTTPOk()
 
 
@@ -183,10 +180,6 @@ if __name__ == '__main__':
 
     getLogger().setLevel(40)
 
-    cmd_get_rl = ['ping', 'config', 'version', 'hook']
-    cmd_post_rl = ['sync', 'hook']
-    cmd_post_hr = ['ping', 'push', 'create', 'delete', 'release']
-
     if 'GH_USER' in environ:
         user = environ['GH_USER']
     else:
@@ -253,6 +246,7 @@ if __name__ == '__main__':
     if not res:
         error("target_create returned an error, exit")
         exit(1)
+
     asyncio.set_event_loop_policy(EventLoopPolicy())
 
     app = web.Application()
