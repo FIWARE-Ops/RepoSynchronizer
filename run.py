@@ -140,8 +140,9 @@ async def target_create_bounded(repository, sem, session):
 
 async def target_create_one(repository, session):
     target = config[repository]['target']
+    source = repository
 
-    url = api_url + 'repos/' + target
+    url = api_url + 'repos/' + target + '?access_token=' + token
     try:
         async with session.get(url) as response:
             status = response.status
@@ -153,6 +154,9 @@ async def target_create_one(repository, session):
         return False
     except Exception as exception:
         error('target_create_one_check, %s, %s', target, exception)
+        return False
+
+    if status == 403:
         return False
 
     if status == 404:
@@ -175,20 +179,21 @@ async def target_create_one(repository, session):
             error('target_create_one_create, %s, %s %s', repository, 'status code', status)
             return False
 
-        url = api_url + 'repos/' + target + '?access_token=' + token
-        data = dumps({'description': description + source})
-        try:
-            async with session.patch(url, data=data) as response:
-                status = response.status
-        except ClientConnectorError:
-            error('target_create_one_change, %s, %s', repository, 'connection error')
-            return False
-        except TimeoutError:
-            error('target_create_one_change, %s, %s', repository, 'timeout error')
-            return False
-        except Exception as exception:
-            error('target_create_one_change, %s, %s', repository, exception)
-            return False
+    url = api_url + 'repos/' + target + '?access_token=' + token
+    data = dumps({'description': description + source})
+    try:
+        async with session.patch(url, data=data) as response:
+            status = response.status
+    except ClientConnectorError:
+        error('target_create_one_change, %s, %s', repository, 'connection error')
+        return False
+    except TimeoutError:
+        error('target_create_one_change, %s, %s', repository, 'timeout error')
+        return False
+    except Exception as exception:
+        error('target_create_one_change, %s, %s', repository, exception)
+        return False
+
     if status in [200, 201]:
         return True
 
@@ -241,9 +246,9 @@ if __name__ == '__main__':
         exit(1)
     try:
         for element in temp['repositories']:
-            source = element['source'].lower()
-            config[source] = dict()
-            config[source]['target'] = element['target']
+            src = element['source'].lower()
+            config[src] = dict()
+            config[src]['target'] = element['target']
     except KeyError:
         error('Config is not correct')
         exit(1)
