@@ -176,11 +176,6 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.reply(message, code=404, cmd=cmd)
             return
 
-        if cmd in cmd_post_hr_ignored:
-            message = {'message': 'Request in ignored list'}
-            self.reply(message, cmd=cmd)
-            return
-
         if cmd == 'ping':
             message = {'message': 'Pong'}
             self.reply(message, cmd=cmd)
@@ -220,6 +215,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if not status:
             message = {'message': 'Bad request'}
             self.reply(message, code=400, cmd=cmd)
+            return
+
+        if cmd in cmd_post_hr_ignored:
+            message = {'message': 'Request in ignored list'}
+            self.reply(message, cmd=cmd, repo=repo)
             return
 
         check = check_repo_in_config(repo)
