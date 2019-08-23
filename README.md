@@ -35,7 +35,10 @@ Get version
 ```console
 $ curl http://localhost:${PORT}/version
 ```
-
+Synchronize
+```console
+$ curl -XPOST http://localhost:${PORT}/sync?id=${REPOSITORY}
+```
 ## GitHub integration
 This project works as an endpoint and it should receive notifications from GitHub, so you should configure the webhook in the GitHub repository:
 * application/json

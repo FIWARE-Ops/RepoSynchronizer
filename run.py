@@ -4,7 +4,7 @@
 from aiohttp import web, ClientSession, ClientConnectorError
 from argparse import ArgumentParser
 from logging import error, getLogger
-from os import path, environ, makedirs
+from os import path, environ
 from uvloop import EventLoopPolicy
 from yajl import dumps, loads
 import asyncio
@@ -39,6 +39,16 @@ async def get_handler(request):
     return web.Response(text=version)
 
 
+@routes.post('/sync')
+async def get_handler(request):
+    try:
+        data = {'repository': {'full_name': request.rel_url.query['id']}}
+    except KeyError:
+        return web.Response(text='Wrong payload\n', status=400)
+
+    return await synchronize(data)
+
+
 @routes.post('/')
 async def post_handler(request):
     try:
@@ -64,14 +74,20 @@ async def post_handler(request):
         error('Bad request, %s', data)
         return web.HTTPBadRequest()
 
+    return await synchronize(data)
+
+
+async def synchronize(data):
     try:
-        repository = data['repository']['full_name']
+        repository = data['repository']['full_name'].lower()
     except ValueError:
         error('Bad request, %s', data)
         return web.HTTPBadRequest()
+    except KeyError:
+        return web.Response(text='Wrong payload\n', status=400)
 
-    if not repository or repository not in config:
-        return web.Response(text='Repository not found in the config, or not defined\n', status=404)
+    if repository not in config:
+        return web.Response(text='Repository not found in the config\n', status=404)
 
     async with config[repository]['lock']:
         trg_path = path.join(workspace + '/', repository)
@@ -79,16 +95,24 @@ async def post_handler(request):
         dst_url = 'https://' + user + ':' + token + '@github.com/' + config[repository]['target']
         cmd_list = list()
         if not path.isdir(trg_path):
-            makedirs(trg_path)
-            cmd_list.append('git clone --mirror ' + src_url + ' ' + trg_path)
-            cmd_list.append('git -C ' + trg_path + ' remote set-url --push origin ' + dst_url)
-        cmd_list.append('git -C ' + trg_path + ' fetch -p -m origin')
-        cmd_list.append('git -C ' + trg_path + ' push --mirror')
+            cmd_list.append('LC_ALL=en_GB git clone --mirror ' + src_url + ' ' + trg_path)
+            cmd_list.append('LC_ALL=en_GB git -C ' + trg_path + ' remote set-url --push origin ' + dst_url)
+        cmd_list.append('LC_ALL=en_GB git -C ' + trg_path + ' fetch -p -m origin')
+        cmd_list.append('LC_ALL=en_GB git -C ' + trg_path + ' push --mirror')
         for cmd in cmd_list:
-            process = await asyncio.create_subprocess_shell(cmd, stdout=asyncio.subprocess.PIPE,
+            process = await asyncio.create_subprocess_shell(cmd,
+                                                            stdout=asyncio.subprocess.PIPE,
                                                             stderr=asyncio.subprocess.PIPE)
-            await process.communicate()
-        return web.HTTPOk()
+            stdout, stderr = await process.communicate()
+
+            if 'fetch' in cmd:
+                stderr = stderr.decode()
+                if '->' in stderr:
+                    text = 'Synchronized\n'
+                else:
+                    text = 'Already synchronized\n'
+
+        return web.Response(text=text)
 
 
 async def target_create():
@@ -116,7 +140,6 @@ async def target_create_bounded(repository, sem, session):
 
 async def target_create_one(repository, session):
     target = config[repository]['target']
-    source = repository
 
     url = api_url + 'repos/' + target
     try:
@@ -218,8 +241,9 @@ if __name__ == '__main__':
         exit(1)
     try:
         for element in temp['repositories']:
-            config[element['source']] = dict()
-            config[element['source']]['target'] = element['target']
+            source = element['source'].lower()
+            config[source] = dict()
+            config[source]['target'] = element['target']
     except KeyError:
         error('Config is not correct')
         exit(1)
